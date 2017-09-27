@@ -1,7 +1,6 @@
 package com.mumu.specialword.specialword.service.impl;
 
 import com.mumu.specialword.specialword.service.SpecialWordService;
-import jdk.nashorn.internal.ir.annotations.Ignore;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -44,6 +43,8 @@ public class SpecialWordServiceImpl implements SpecialWordService {
                     state = new PendingNormalIgnoreState("@ApiOperation(", ")");
                 }else if(line.trim().contains("@ApiParam(")){
                     state = new PendingNormalIgnoreState("@ApiParam(", ")");
+                }else if(line.trim().contains("@ApiModel(")){
+                    state = new PendingNormalIgnoreState("@ApiModel(", ")");
                 }
 
                 boolean specialFlag = false;
@@ -207,11 +208,11 @@ public class SpecialWordServiceImpl implements SpecialWordService {
                 if(ch == start.charAt(index)){
                     if(index == start.length() - 1){
                         // 是最后一个
-                        return new IgnoreState(end);
+                        return new IgnoreState(start, end);
                     }
                     return this;
                 }
-                return new NormalState();
+                return new PendingNormalIgnoreState(start, end);
             } finally {
                 index++;
             }
@@ -219,14 +220,16 @@ public class SpecialWordServiceImpl implements SpecialWordService {
     }
 
     class IgnoreState implements State{
+        private String start;
         private String end;
         private int index = 0;
 
-        public IgnoreState(String end) {
-            this(end, 0);
+        public IgnoreState(String start, String end) {
+            this(start, end, 0);
         }
 
-        public IgnoreState(String end, int index) {
+        public IgnoreState(String start, String end, int index) {
+            this.start = start;
             this.end = end;
             this.index = index;
         }
@@ -238,12 +241,12 @@ public class SpecialWordServiceImpl implements SpecialWordService {
                 if(ch == end.charAt(index)){
                     if(index == end.length() - 1){
                         // 是最后一个
-                        return new NormalState();
+                        return new PendingNormalIgnoreState(start, end);
                     }else{
-                        return new PendingIgnoreEndState(end, index + 1);
+                        return new PendingIgnoreEndState(start, end, index + 1);
                     }
                 }
-                return new IgnoreState(end);
+                return new IgnoreState(start, end);
             } finally {
                 index++;
             }
@@ -251,10 +254,12 @@ public class SpecialWordServiceImpl implements SpecialWordService {
     }
 
     class PendingIgnoreEndState implements State{
+        private String start;
         private String end;
         private int index = 0;
 
-        public PendingIgnoreEndState(String end, int index) {
+        public PendingIgnoreEndState(String start, String end, int index) {
+            this.start = start;
             this.end = end;
             this.index = index;
         }
@@ -265,16 +270,16 @@ public class SpecialWordServiceImpl implements SpecialWordService {
                 if(ch == end.charAt(index)){
                     if(index == end.length() - 1){
                         // 是最后一个
-                        return new NormalState();
+                        return new PendingNormalIgnoreState(start, end);
                     }else{
                         if(ch == end.charAt(0)){
-                            return new IgnoreState(end, 1);
+                            return new IgnoreState(start, end, 1);
                         }else{
-                            return new IgnoreState(end);
+                            return new IgnoreState(start, end);
                         }
                     }
                 }
-                return new NormalState();
+                return new PendingNormalIgnoreState(start, end);
             } finally {
                 index++;
             }
