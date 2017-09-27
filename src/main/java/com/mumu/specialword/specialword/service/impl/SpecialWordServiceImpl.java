@@ -1,6 +1,7 @@
 package com.mumu.specialword.specialword.service.impl;
 
 import com.mumu.specialword.specialword.service.SpecialWordService;
+import jdk.nashorn.internal.ir.annotations.Ignore;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -11,6 +12,7 @@ import java.nio.charset.Charset;
 
 @Service
 public class SpecialWordServiceImpl implements SpecialWordService {
+
     @Override
     public void checkSpecialWords(File file, StringBuilder specialWords) {
 //        try {
@@ -34,6 +36,16 @@ public class SpecialWordServiceImpl implements SpecialWordService {
             String line = null;
             StringBuilder sb = new StringBuilder();
             while ((line = br.readLine()) != null) {
+                if(line.trim().startsWith("logger.")){
+                    state = new LoggerState();
+                }else if(line.trim().contains("@Api(")){
+                    state = new PendingNormalIgnoreState("@Api(", ")");
+                }else if(line.trim().contains("@ApiOperation(")){
+                    state = new PendingNormalIgnoreState("@ApiOperation(", ")");
+                }else if(line.trim().contains("@ApiParam(")){
+                    state = new PendingNormalIgnoreState("@ApiParam(", ")");
+                }
+
                 boolean specialFlag = false;
                 for (char ch : line.toCharArray()) {
                     state = state.read(ch);
@@ -81,6 +93,7 @@ public class SpecialWordServiceImpl implements SpecialWordService {
         public State read(char ch) {
             if(ch == '/'){
                 return new PendingCommentState();
+            }else if(ch == '@'){
             }
             return this;
         }
@@ -131,6 +144,140 @@ public class SpecialWordServiceImpl implements SpecialWordService {
                 return this;
             }
             return new MultiLineCommentState();
+        }
+    }
+
+    class LoggerState implements State{
+
+        @Override
+        public State read(char ch) {
+            if(ch == ')'){
+                return new LoggerPendingEndState();
+            }
+            return this;
+        }
+    }
+
+    class LoggerPendingEndState implements State{
+
+        @Override
+        public State read(char ch) {
+            if(ch == ' '){
+                return this;
+            }else if(ch == ';'){
+                return new NormalState();
+            }
+            return new LoggerState();
+        }
+    }
+
+    class PendingNormalIgnoreState extends NormalState{
+        private String start;
+        private String end;
+
+        public PendingNormalIgnoreState(String start, String end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        @Override
+        public State read(char ch) {
+            if(ch == start.charAt(0)){
+                PendingIgnoreState state = new PendingIgnoreState(start, end);
+                return state.read(ch);
+            }
+            return super.read(ch);
+        }
+    }
+
+    class PendingIgnoreState implements State{
+        private String start;
+        private String end;
+        private int index = 0;
+
+        public PendingIgnoreState(String start, String end) {
+            this.start = start;
+            this.end = end;
+        }
+
+
+        @Override
+        public State read(char ch) {
+            try {
+                if(ch == start.charAt(index)){
+                    if(index == start.length() - 1){
+                        // 是最后一个
+                        return new IgnoreState(end);
+                    }
+                    return this;
+                }
+                return new NormalState();
+            } finally {
+                index++;
+            }
+        }
+    }
+
+    class IgnoreState implements State{
+        private String end;
+        private int index = 0;
+
+        public IgnoreState(String end) {
+            this(end, 0);
+        }
+
+        public IgnoreState(String end, int index) {
+            this.end = end;
+            this.index = index;
+        }
+
+
+        @Override
+        public State read(char ch) {
+            try {
+                if(ch == end.charAt(index)){
+                    if(index == end.length() - 1){
+                        // 是最后一个
+                        return new NormalState();
+                    }else{
+                        return new PendingIgnoreEndState(end, index + 1);
+                    }
+                }
+                return new IgnoreState(end);
+            } finally {
+                index++;
+            }
+        }
+    }
+
+    class PendingIgnoreEndState implements State{
+        private String end;
+        private int index = 0;
+
+        public PendingIgnoreEndState(String end, int index) {
+            this.end = end;
+            this.index = index;
+        }
+
+        @Override
+        public State read(char ch) {
+            try {
+                if(ch == end.charAt(index)){
+                    if(index == end.length() - 1){
+                        // 是最后一个
+                        return new NormalState();
+                    }else{
+                        if(ch == end.charAt(0)){
+                            return new IgnoreState(end, 1);
+                        }else{
+                            return new IgnoreState(end);
+                        }
+                    }
+                }
+                return new NormalState();
+            } finally {
+                index++;
+            }
         }
     }
 }
